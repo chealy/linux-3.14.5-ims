@@ -139,6 +139,9 @@ static void del_nbp(struct net_bridge_port *p)
 	br_stp_disable_port(p);
 	spin_unlock_bh(&br->lock);
 
+	if (dev->netdev_ops->ndo_bridge_leave != NULL)
+		dev->netdev_ops->ndo_bridge_leave(dev);
+
 	br_ifinfo_notify(RTM_DELLINK, p);
 
 	nbp_vlan_flush(p);
@@ -394,6 +397,9 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 
 	spin_lock_bh(&br->lock);
 	changed_addr = br_stp_recalculate_bridge_id(br);
+
+	if (dev->netdev_ops->ndo_bridge_join != NULL)
+		dev->netdev_ops->ndo_bridge_join(dev, (void *)br);
 
 	if (netif_running(dev) && netif_oper_up(dev) &&
 	    (br->dev->flags & IFF_UP))

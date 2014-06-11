@@ -9,6 +9,8 @@
  * (at your option) any later version.
  */
 
+#include <linux/device.h>
+#include <linux/hwmon.h>
 #include <linux/list.h>
 #include <linux/netdevice.h>
 #include <linux/platform_device.h>
@@ -18,6 +20,7 @@
 #include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_platform.h>
+#include <linux/sysfs.h>
 #include "dsa_priv.h"
 
 char dsa_driver_version[] = "0.1";
@@ -72,6 +75,103 @@ dsa_switch_probe(struct mii_bus *bus, int sw_addr, char **_name)
 	return ret;
 }
 
+/* hwmon support ************************************************************/
+
+#if IS_ENABLED(CONFIG_HWMON)
+
+static ssize_t temp1_input_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct dsa_switch *ds = dev_get_drvdata(dev);
+	int temp, ret;
+
+	ret = ds->drv->get_temp(ds, &temp);
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "%d\n", temp * 1000);
+}
+static DEVICE_ATTR_RO(temp1_input);
+
+static ssize_t temp1_max_show(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct dsa_switch *ds = dev_get_drvdata(dev);
+	int temp, ret;
+
+	ret = ds->drv->get_temp_limit(ds, &temp);
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "%d\n", temp * 1000);
+}
+
+static ssize_t temp1_max_store(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	struct dsa_switch *ds = dev_get_drvdata(dev);
+	int temp, ret;
+
+	ret = kstrtoint(buf, 0, &temp);
+	if (ret < 0)
+		return ret;
+
+	ret = ds->drv->set_temp_limit(ds, DIV_ROUND_CLOSEST(temp, 1000));
+	if (ret < 0)
+		return ret;
+
+	return count;
+}
+static DEVICE_ATTR_RW(temp1_max);
+
+static ssize_t temp1_max_alarm_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct dsa_switch *ds = dev_get_drvdata(dev);
+	bool alarm;
+	int ret;
+
+	ret = ds->drv->get_temp_alarm(ds, &alarm);
+	if (ret < 0)
+		return ret;
+
+	return sprintf(buf, "%d\n", alarm);
+}
+static DEVICE_ATTR_RO(temp1_max_alarm);
+
+static struct attribute *dsa_hwmon_attrs[] = {
+	&dev_attr_temp1_input.attr,	/* 0 */
+	&dev_attr_temp1_max.attr,	/* 1 */
+	&dev_attr_temp1_max_alarm.attr,	/* 2 */
+	NULL
+};
+
+static umode_t dsa_hwmon_attrs_visible(struct kobject *kobj,
+				       struct attribute *attr, int index)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct dsa_switch *ds = dev_get_drvdata(dev);
+	struct dsa_switch_driver *drv = ds->drv;
+
+	if (index == 1) {
+		if (!drv->get_temp_limit)
+			return 0;
+		if (!drv->set_temp_limit)
+			return attr->mode & S_IRUGO;
+	} else if (index == 2 && !drv->get_temp_alarm) {
+		return 0;
+	}
+	return attr->mode;
+}
+
+static const struct attribute_group dsa_hwmon_group = {
+	.attrs = dsa_hwmon_attrs,
+	.is_visible = dsa_hwmon_attrs_visible,
+};
+__ATTRIBUTE_GROUPS(dsa_hwmon);
+
+#endif /* IS_ENABLED(CONFIG_HWMON) */
 
 /* basic switch operations **************************************************/
 static struct dsa_switch *
@@ -91,13 +191,13 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	 */
 	drv = dsa_switch_probe(bus, pd->sw_addr, &name);
 	if (drv == NULL) {
-		printk(KERN_ERR "%s[%d]: could not detect attached switch\n",
+		pr_err("%s[%d]: could not detect attached switch\n",
 		       dst->master_netdev->name, index);
 		return ERR_PTR(-EINVAL);
 	}
-	printk(KERN_INFO "%s[%d]: detected a %s switch\n",
-		dst->master_netdev->name, index, name);
-
+	pr_info("%s[%d]: detected a%s %s switch\n",
+		dst->master_netdev->name, index,
+		pd->flags & DSA_IS_UNMANAGED ? "n unmanaged" : "", name);
 
 	/*
 	 * Allocate and initialise switch state.
@@ -111,7 +211,8 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	ds->pd = dst->pd->chip + index;
 	ds->drv = drv;
 	ds->master_mii_bus = bus;
-
+	ds->parent = parent;
+	ds->name = name;
 
 	/*
 	 * Validate supplied switch configuration.
@@ -125,7 +226,7 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 
 		if (!strcmp(name, "cpu")) {
 			if (dst->cpu_switch != -1) {
-				printk(KERN_ERR "multiple cpu ports?!\n");
+				pr_err("multiple cpu ports?!\n");
 				ret = -EINVAL;
 				goto out;
 			}
@@ -160,9 +261,12 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	if (ret < 0)
 		goto out;
 
-	ret = drv->set_addr(ds, dst->master_netdev->dev_addr);
-	if (ret < 0)
-		goto out;
+	/* Don't configure MAC address in unmanaged mode */
+	if (!dsa_is_unmanaged(ds)) {
+		ret = drv->set_addr(ds, dst->master_netdev->dev_addr);
+		if (ret < 0)
+			goto out;
+	}
 
 	ds->slave_mii_bus = mdiobus_alloc();
 	if (ds->slave_mii_bus == NULL) {
@@ -182,13 +286,13 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	for (i = 0; i < DSA_MAX_PORTS; i++) {
 		struct net_device *slave_dev;
 
-		if (!(ds->phys_port_mask & (1 << i)))
+		if (!(ds->phys_port_mask & (1 << i)) &&
+		    (i != dst->cpu_port || !dsa_create_cpu_if(ds)))
 			continue;
 
 		slave_dev = dsa_slave_create(ds, parent, i, pd->port_names[i]);
 		if (slave_dev == NULL) {
-			printk(KERN_ERR "%s[%d]: can't create dsa "
-			       "slave device for port %d(%s)\n",
+			pr_err("%s[%d]: can't create dsa slave device for port %d(%s)\n",
 			       dst->master_netdev->name,
 			       index, i, pd->port_names[i]);
 			continue;
@@ -196,6 +300,16 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 
 		ds->ports[i] = slave_dev;
 	}
+
+#if IS_ENABLED(CONFIG_HWMON)
+	/* If the switch provides a temperature sensor, register with the
+	 * hardware monitoring subsystem.
+	 * Treat registration error as non-fatal and ignore it.
+	 */
+	if (drv->get_temp)
+		devm_hwmon_device_register_with_groups(ds->parent, "dsa", ds,
+						       dsa_hwmon_groups);
+#endif
 
 	return ds;
 
@@ -420,6 +534,11 @@ static int dsa_of_probe(struct platform_device *pdev)
 		if (cd->sw_addr > PHY_MAX_ADDR)
 			continue;
 
+		if (of_property_read_bool(child, "unmanaged-switch"))
+			cd->flags |= DSA_IS_UNMANAGED;
+		if (of_property_read_bool(child, "create-cpu-interface"))
+			cd->flags |= DSA_CREATE_CPU_IF;
+
 		for_each_available_child_of_node(child, port) {
 			port_reg = of_get_property(port, "reg", NULL);
 			if (!port_reg)
@@ -493,8 +612,8 @@ static int dsa_probe(struct platform_device *pdev)
 	int i, ret;
 
 	if (!dsa_version_printed++)
-		printk(KERN_NOTICE "Distributed Switch Architecture "
-			"driver version %s\n", dsa_driver_version);
+		pr_notice("Distributed Switch Architecture driver version %s\n",
+			  dsa_driver_version);
 
 	if (pdev->dev.of_node) {
 		ret = dsa_of_probe(pdev);
@@ -539,16 +658,15 @@ static int dsa_probe(struct platform_device *pdev)
 
 		bus = dev_to_mii_bus(pd->chip[i].mii_bus);
 		if (bus == NULL) {
-			printk(KERN_ERR "%s[%d]: no mii bus found for "
-				"dsa switch\n", dev->name, i);
+			pr_err("%s[%d]: no mii bus found for dsa switch\n",
+			       dev->name, i);
 			continue;
 		}
 
 		ds = dsa_switch_setup(dst, i, &pdev->dev, bus);
 		if (IS_ERR(ds)) {
-			printk(KERN_ERR "%s[%d]: couldn't create dsa switch "
-				"instance (error %ld)\n", dev->name, i,
-				PTR_ERR(ds));
+			pr_err("%s[%d]: couldn't create dsa switch instance (error %ld)\n",
+			       dev->name, i, PTR_ERR(ds));
 			continue;
 		}
 

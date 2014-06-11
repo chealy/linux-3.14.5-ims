@@ -101,6 +101,7 @@ void br_stp_disable_port(struct net_bridge_port *p)
 	wasroot = br_is_root_bridge(br);
 	br_become_designated_port(p);
 	p->state = BR_STATE_DISABLED;
+	br_log_state(p);
 	p->topology_change_ack = 0;
 	p->config_pending = 0;
 

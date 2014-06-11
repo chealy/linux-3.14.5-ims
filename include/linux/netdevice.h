@@ -1034,6 +1034,12 @@ struct net_device_ops {
 						       __be16 proto, u16 vid);
 	int			(*ndo_vlan_rx_kill_vid)(struct net_device *dev,
 						        __be16 proto, u16 vid);
+	void			(*ndo_bridge_join)(struct net_device *dev,
+						   void *bridge);
+	void			(*ndo_bridge_set_stp_state)
+					(struct net_device *dev, int state);
+	void			(*ndo_bridge_leave)(struct net_device *dev);
+	void			(*ndo_bridge_flush)(struct net_device *dev);
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	void                    (*ndo_poll_controller)(struct net_device *dev);
 	int			(*ndo_netpoll_setup)(struct net_device *dev,

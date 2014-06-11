@@ -13,6 +13,7 @@
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
+#include <linux/platform_device.h>
 #include <linux/phy.h>
 #include <net/dsa.h>
 #include "mv88e6xxx.h"
@@ -74,13 +75,17 @@ int __mv88e6xxx_reg_read(struct mii_bus *bus, int sw_addr, int addr, int reg)
 
 int mv88e6xxx_reg_read(struct dsa_switch *ds, int addr, int reg)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 	int ret;
 
 	mutex_lock(&ps->smi_mutex);
 	ret = __mv88e6xxx_reg_read(ds->master_mii_bus,
 				   ds->pd->sw_addr, addr, reg);
 	mutex_unlock(&ps->smi_mutex);
+
+	dev_dbg(&ds->master_mii_bus->dev,
+		"mv88e6xxx_reg_read: addr %.2x reg %.2x = %.4x\n",
+		addr, reg, ret);
 
 	return ret;
 }
@@ -89,6 +94,10 @@ int __mv88e6xxx_reg_write(struct mii_bus *bus, int sw_addr, int addr,
 			  int reg, u16 val)
 {
 	int ret;
+
+	dev_dbg(&bus->dev,
+		"mv88e6xxx_reg_write: addr %.2x reg %.2x value %.4x\n",
+		addr, reg, val);
 
 	if (sw_addr == 0)
 		return mdiobus_write(bus, addr, reg, val);
@@ -118,7 +127,7 @@ int __mv88e6xxx_reg_write(struct mii_bus *bus, int sw_addr, int addr,
 
 int mv88e6xxx_reg_write(struct dsa_switch *ds, int addr, int reg, u16 val)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 	int ret;
 
 	mutex_lock(&ps->smi_mutex);
@@ -256,7 +265,7 @@ static void mv88e6xxx_ppu_reenable_timer(unsigned long _ps)
 
 static int mv88e6xxx_ppu_access_get(struct dsa_switch *ds)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 	int ret;
 
 	mutex_lock(&ps->ppu_mutex);
@@ -283,7 +292,7 @@ static int mv88e6xxx_ppu_access_get(struct dsa_switch *ds)
 
 static void mv88e6xxx_ppu_access_put(struct dsa_switch *ds)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 
 	/* Schedule a timer to re-enable the PHY polling unit. */
 	mod_timer(&ps->ppu_timer, jiffies + msecs_to_jiffies(10));
@@ -292,7 +301,7 @@ static void mv88e6xxx_ppu_access_put(struct dsa_switch *ds)
 
 void mv88e6xxx_ppu_state_init(struct dsa_switch *ds)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 
 	mutex_init(&ps->ppu_mutex);
 	INIT_WORK(&ps->ppu_work, mv88e6xxx_ppu_reenable_work);
@@ -356,6 +365,8 @@ void mv88e6xxx_poll_link(struct dsa_switch *ds)
 
 		if (!link) {
 			if (netif_carrier_ok(dev)) {
+				struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+				ps->link_down_count[i]++;
 				netdev_info(dev, "link down\n");
 				netif_carrier_off(dev);
 			}
@@ -463,7 +474,7 @@ void mv88e6xxx_get_ethtool_stats(struct dsa_switch *ds,
 				 int nr_stats, struct mv88e6xxx_hw_stat *stats,
 				 int port, uint64_t *data)
 {
-	struct mv88e6xxx_priv_state *ps = (void *)(ds + 1);
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 	int ret;
 	int i;
 
@@ -479,18 +490,85 @@ void mv88e6xxx_get_ethtool_stats(struct dsa_switch *ds,
 	for (i = 0; i < nr_stats; i++) {
 		struct mv88e6xxx_hw_stat *s = stats + i;
 		u32 low;
-		u32 high;
+		u32 high = 0;
 
+		if (s->reg >= 0x100) {
+			int ret;
+
+			ret = mv88e6xxx_reg_read(ds, REG_PORT(port),
+						 s->reg - 0x100);
+			if (ret < 0)
+				goto error;
+			low = ret;
+			if (s->sizeof_stat == 4) {
+				ret = mv88e6xxx_reg_read(ds, REG_PORT(port),
+							 s->reg - 0x100 + 1);
+				if (ret < 0)
+					goto error;
+				high = ret;
+			}
+			data[i] = (((u64)high) << 16) | low;
+			continue;
+		}
 		mv88e6xxx_stats_read(ds, s->reg, &low);
 		if (s->sizeof_stat == 8)
 			mv88e6xxx_stats_read(ds, s->reg + 1, &high);
-		else
-			high = 0;
 
 		data[i] = (((u64)high) << 32) | low;
 	}
-
+error:
 	mutex_unlock(&ps->stats_mutex);
+}
+
+int mv88e6xxx_get_regs_len(struct dsa_switch *ds, int port)
+{
+	return 32 * sizeof(u16);
+}
+
+void mv88e6xxx_get_regs(struct dsa_switch *ds, int port,
+			struct ethtool_regs *regs, void *_p)
+{
+	u16 *p = _p;
+	int i;
+
+	regs->version = 0;
+
+	memset(p, 0xff, 32 * sizeof(u16));
+
+	for (i = 0; i < 32; i++) {
+		int ret;
+
+		ret = mv88e6xxx_reg_read(ds, REG_PORT(port), i);
+		if (ret >= 0)
+			p[i] = ret;
+	}
+}
+
+static int __mv88e6xxx_reset_stats(struct dsa_switch *ds)
+{
+	int ret;
+
+	/* Clear all counters for all ports. */
+	REG_WRITE(REG_GLOBAL, 0x1d, 0x9c00);
+
+	/* Wait for the clearing to complete. */
+	ret = mv88e6xxx_stats_wait(ds);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+int mv88e6xxx_reset_stats(struct dsa_switch *ds)
+{
+	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
+	int ret;
+
+	mutex_lock(&ps->stats_mutex);
+	ret = __mv88e6xxx_reset_stats(ds);
+	mutex_unlock(&ps->stats_mutex);
+
+	return ret;
 }
 
 static int __init mv88e6xxx_init(void)
@@ -500,6 +578,9 @@ static int __init mv88e6xxx_init(void)
 #endif
 #if IS_ENABLED(CONFIG_NET_DSA_MV88E6123_61_65)
 	register_switch_driver(&mv88e6123_61_65_switch_driver);
+#endif
+#if IS_ENABLED(CONFIG_NET_DSA_MV88E6352)
+	register_switch_driver(&mv88e6352_switch_driver);
 #endif
 	return 0;
 }

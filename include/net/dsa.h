@@ -13,6 +13,7 @@
 
 #include <linux/if_ether.h>
 #include <linux/list.h>
+#include <linux/sysfs.h>
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 
@@ -42,7 +43,13 @@ struct dsa_chip_data {
 	 * NULL if there is only one switch chip.
 	 */
 	s8		*rtable;
+
+	u32		flags;		/* configuration flags */
 };
+
+/* Configuration flags */
+#define DSA_IS_UNMANAGED	(1 << 0)
+#define DSA_CREATE_CPU_IF	(1 << 1)
 
 struct dsa_platform_data {
 	/*
@@ -93,6 +100,9 @@ struct dsa_switch_tree {
 };
 
 struct dsa_switch {
+	struct device		*parent;	/* parent device */
+	const char		*name;		/* switch name/revision */
+
 	/*
 	 * Parent switch tree, and switch index.
 	 */
@@ -126,6 +136,16 @@ struct dsa_switch {
 static inline bool dsa_is_cpu_port(struct dsa_switch *ds, int p)
 {
 	return !!(ds->index == ds->dst->cpu_switch && p == ds->dst->cpu_port);
+}
+
+static inline bool dsa_is_unmanaged(struct dsa_switch *ds)
+{
+	return ds->pd->flags & DSA_IS_UNMANAGED;
+}
+
+static inline bool dsa_create_cpu_if(struct dsa_switch *ds)
+{
+	return ds->pd->flags & DSA_CREATE_CPU_IF;
 }
 
 static inline u8 dsa_upstream_port(struct dsa_switch *ds)
@@ -176,10 +196,47 @@ struct dsa_switch_driver {
 	void	(*get_ethtool_stats)(struct dsa_switch *ds,
 				     int port, uint64_t *data);
 	int	(*get_sset_count)(struct dsa_switch *ds);
+
+	/* Hardware monitoring */
+	int	(*get_temp)(struct dsa_switch *ds, int *temp);
+	int	(*get_temp_limit)(struct dsa_switch *ds, int *temp);
+	int	(*set_temp_limit)(struct dsa_switch *ds, int temp);
+	int	(*get_temp_alarm)(struct dsa_switch *ds, bool *alarm);
+
+	/* EEPROM access */
+	int	(*get_eeprom_len)(struct dsa_switch *ds);
+	int	(*get_eeprom)(struct dsa_switch *ds,
+			      struct ethtool_eeprom *eeprom, u8 *data);
+	int	(*set_eeprom)(struct dsa_switch *ds,
+			      struct ethtool_eeprom *eeprom, u8 *data);
+
+	/*
+	 * Register access.
+	 */
+	int	(*get_regs_len)(struct dsa_switch *ds, int port);
+	void	(*get_regs)(struct dsa_switch *ds, int port,
+			    struct ethtool_regs *regs, void *p);
+
+	/* sysfs attribute group */
+
+	const struct attribute_group *sysfs_group;
+
+	/* Hardware bridging */
+	void	(*bridge_join)(struct dsa_switch *ds, int port,
+			       void *bridge);
+	void	(*bridge_set_stp_state)(struct dsa_switch *ds, int port,
+					int state);
+	void	(*bridge_leave)(struct dsa_switch *ds, int port);
+	void	(*bridge_flush)(struct dsa_switch *ds, int port);
 };
 
 void register_switch_driver(struct dsa_switch_driver *type);
 void unregister_switch_driver(struct dsa_switch_driver *type);
+
+static inline void *ds_to_priv(struct dsa_switch *ds)
+{
+	return (void *)(ds + 1);
+}
 
 /*
  * The original DSA tag format and some other tag formats have no
@@ -197,5 +254,8 @@ static inline bool dsa_uses_trailer_tags(struct dsa_switch_tree *dst)
 {
 	return !!(dst->tag_protocol == htons(ETH_P_TRAILER));
 }
+
+struct dsa_switch *dsa_slave_switch(struct net_device *dev);
+int dsa_slave_port(struct net_device *dev);
 
 #endif

@@ -14,6 +14,20 @@
 #include <linux/phy.h>
 #include "dsa_priv.h"
 
+struct dsa_switch *dsa_slave_switch(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+
+	return p->parent;
+}
+
+int dsa_slave_port(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+
+	return p->port;
+}
+
 /* slave mii_bus handling ***************************************************/
 static int dsa_slave_phy_read(struct mii_bus *bus, int addr, int reg)
 {
@@ -171,6 +185,42 @@ static int dsa_slave_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return -EOPNOTSUPP;
 }
 
+static void dsa_bridge_join(struct net_device *dev, void *bridge)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->bridge_join != NULL)
+		ds->drv->bridge_join(ds, p->port, bridge);
+}
+
+static void dsa_bridge_set_stp_state(struct net_device *dev, int state)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->bridge_set_stp_state != NULL)
+		ds->drv->bridge_set_stp_state(ds, p->port, state);
+}
+
+static void dsa_bridge_leave(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->bridge_leave != NULL)
+		ds->drv->bridge_leave(ds, p->port);
+}
+
+static void dsa_bridge_flush(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->bridge_flush != NULL)
+		ds->drv->bridge_flush(ds, p->port);
+}
+
 
 /* ethtool operations *******************************************************/
 static int
@@ -209,6 +259,26 @@ static void dsa_slave_get_drvinfo(struct net_device *dev,
 	strlcpy(drvinfo->bus_info, "platform", sizeof(drvinfo->bus_info));
 }
 
+static int dsa_slave_get_regs_len(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->get_regs_len != NULL)
+		return ds->drv->get_regs_len(ds, p->port);
+
+	return -EOPNOTSUPP;
+}
+
+static void
+dsa_slave_get_regs(struct net_device *dev, struct ethtool_regs *regs, void *_p)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	ds->drv->get_regs(ds, p->port, regs, _p);
+}
+
 static int dsa_slave_nway_reset(struct net_device *dev)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
@@ -227,6 +297,41 @@ static u32 dsa_slave_get_link(struct net_device *dev)
 		genphy_update_link(p->phy);
 		return p->phy->link;
 	}
+
+	return -EOPNOTSUPP;
+}
+
+static int dsa_slave_get_eeprom_len(struct net_device *dev)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->get_eeprom_len != NULL)
+		return ds->drv->get_eeprom_len(ds);
+
+	return 0;
+}
+
+static int dsa_slave_get_eeprom(struct net_device *dev,
+				struct ethtool_eeprom *eeprom, u8 *data)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->get_eeprom != NULL)
+		return ds->drv->get_eeprom(ds, eeprom, data);
+
+	return -EOPNOTSUPP;
+}
+
+static int dsa_slave_set_eeprom(struct net_device *dev,
+				struct ethtool_eeprom *eeprom, u8 *data)
+{
+	struct dsa_slave_priv *p = netdev_priv(dev);
+	struct dsa_switch *ds = p->parent;
+
+	if (ds->drv->set_eeprom != NULL)
+		return ds->drv->set_eeprom(ds, eeprom, data);
 
 	return -EOPNOTSUPP;
 }
@@ -282,15 +387,34 @@ static int dsa_slave_get_sset_count(struct net_device *dev, int sset)
 	return -EOPNOTSUPP;
 }
 
+static netdev_tx_t dummy_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	dev->stats.tx_dropped++;
+	kfree_skb(skb);
+	return NETDEV_TX_OK;
+}
+
 static const struct ethtool_ops dsa_slave_ethtool_ops = {
 	.get_settings		= dsa_slave_get_settings,
 	.set_settings		= dsa_slave_set_settings,
 	.get_drvinfo		= dsa_slave_get_drvinfo,
+	.get_regs_len		= dsa_slave_get_regs_len,
+	.get_regs		= dsa_slave_get_regs,
 	.nway_reset		= dsa_slave_nway_reset,
 	.get_link		= dsa_slave_get_link,
+	.get_eeprom_len		= dsa_slave_get_eeprom_len,
+	.get_eeprom		= dsa_slave_get_eeprom,
+	.set_eeprom		= dsa_slave_set_eeprom,
 	.get_strings		= dsa_slave_get_strings,
 	.get_ethtool_stats	= dsa_slave_get_ethtool_stats,
 	.get_sset_count		= dsa_slave_get_sset_count,
+};
+
+/* Minimal functionality in unmanaged mode and for cpu port */
+static const struct net_device_ops dummy_netdev_ops = {
+	.ndo_init		= dsa_slave_init,
+	.ndo_start_xmit		= dummy_xmit,
+	.ndo_do_ioctl		= dsa_slave_ioctl,
 };
 
 #ifdef CONFIG_NET_DSA_TAG_DSA
@@ -303,6 +427,10 @@ static const struct net_device_ops dsa_netdev_ops = {
 	.ndo_set_rx_mode	= dsa_slave_set_rx_mode,
 	.ndo_set_mac_address	= dsa_slave_set_mac_address,
 	.ndo_do_ioctl		= dsa_slave_ioctl,
+	.ndo_bridge_join	= dsa_bridge_join,
+	.ndo_bridge_set_stp_state	= dsa_bridge_set_stp_state,
+	.ndo_bridge_leave	= dsa_bridge_leave,
+	.ndo_bridge_flush	= dsa_bridge_flush,
 };
 #endif
 #ifdef CONFIG_NET_DSA_TAG_EDSA
@@ -315,6 +443,10 @@ static const struct net_device_ops edsa_netdev_ops = {
 	.ndo_set_rx_mode	= dsa_slave_set_rx_mode,
 	.ndo_set_mac_address	= dsa_slave_set_mac_address,
 	.ndo_do_ioctl		= dsa_slave_ioctl,
+	.ndo_bridge_join	= dsa_bridge_join,
+	.ndo_bridge_set_stp_state	= dsa_bridge_set_stp_state,
+	.ndo_bridge_leave	= dsa_bridge_leave,
+	.ndo_bridge_flush	= dsa_bridge_flush,
 };
 #endif
 #ifdef CONFIG_NET_DSA_TAG_TRAILER
@@ -327,6 +459,10 @@ static const struct net_device_ops trailer_netdev_ops = {
 	.ndo_set_rx_mode	= dsa_slave_set_rx_mode,
 	.ndo_set_mac_address	= dsa_slave_set_mac_address,
 	.ndo_do_ioctl		= dsa_slave_ioctl,
+	.ndo_bridge_join	= dsa_bridge_join,
+	.ndo_bridge_set_stp_state	= dsa_bridge_set_stp_state,
+	.ndo_bridge_leave	= dsa_bridge_leave,
+	.ndo_bridge_flush	= dsa_bridge_flush,
 };
 #endif
 
@@ -350,7 +486,9 @@ dsa_slave_create(struct dsa_switch *ds, struct device *parent,
 	eth_hw_addr_inherit(slave_dev, master);
 	slave_dev->tx_queue_len = 0;
 
-	switch (ds->dst->tag_protocol) {
+	if (dsa_is_unmanaged(ds) || dsa_is_cpu_port(ds, port))
+		slave_dev->netdev_ops = &dummy_netdev_ops;
+	else switch (ds->dst->tag_protocol) {
 #ifdef CONFIG_NET_DSA_TAG_DSA
 	case htons(ETH_P_DSA):
 		slave_dev->netdev_ops = &dsa_netdev_ops;
@@ -379,10 +517,12 @@ dsa_slave_create(struct dsa_switch *ds, struct device *parent,
 	p->port = port;
 	p->phy = ds->slave_mii_bus->phy_map[port];
 
+	slave_dev->sysfs_groups[0] = ds->drv->sysfs_group;
+
 	ret = register_netdev(slave_dev);
 	if (ret) {
-		printk(KERN_ERR "%s: error %d registering interface %s\n",
-				master->name, ret, slave_dev->name);
+		pr_err("%s: error %d registering interface %s\n",
+		       master->name, ret, slave_dev->name);
 		free_netdev(slave_dev);
 		return NULL;
 	}

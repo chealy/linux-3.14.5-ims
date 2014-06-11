@@ -37,7 +37,42 @@ struct mv88e6xxx_priv_state {
 	 */
 	struct mutex	stats_mutex;
 
+	/* This mutex serializes phy access for chips with
+	 * indirect phy addressing. It is unused for chips
+	 * with direct phy access.
+	 */
+	struct mutex phy_mutex;
+
+	/* This mutex serializes eeprom access for chips with
+	 * eeprom support.
+	 */
+	struct mutex eeprom_mutex;
+
 	int		id; /* switch product id */
+	unsigned int	reg_addr;
+	unsigned int	reg_device;
+
+	unsigned int	phy_addr;
+	unsigned int	phy_page;
+	unsigned int	phy_device;
+
+	int packet_generator_count;
+
+	/* statistics */
+	unsigned int idle_errors[DSA_MAX_PORTS];
+	unsigned int link_down_count[DSA_MAX_PORTS];
+	unsigned int receive_errors[DSA_MAX_PORTS];
+
+	/* hw bridging */
+
+	void *bridge[DSA_MAX_PORTS];
+	u8 fid[DSA_MAX_PORTS];
+	u16 bridge_mask[DSA_MAX_PORTS];
+	u16 fid_work_mask;
+	u8 stp_state[DSA_MAX_PORTS];
+	u16 stp_dirty_mask;
+	struct work_struct bridge_work;
+	spinlock_t bridge_lock;
 };
 
 struct mv88e6xxx_hw_stat {
@@ -67,9 +102,15 @@ void mv88e6xxx_get_strings(struct dsa_switch *ds,
 void mv88e6xxx_get_ethtool_stats(struct dsa_switch *ds,
 				 int nr_stats, struct mv88e6xxx_hw_stat *stats,
 				 int port, uint64_t *data);
+int mv88e6xxx_get_regs_len(struct dsa_switch *ds, int port);
+void mv88e6xxx_get_regs(struct dsa_switch *ds, int port,
+			struct ethtool_regs *regs, void *_p);
+
+int mv88e6xxx_reset_stats(struct dsa_switch *ds);
 
 extern struct dsa_switch_driver mv88e6131_switch_driver;
 extern struct dsa_switch_driver mv88e6123_61_65_switch_driver;
+extern struct dsa_switch_driver mv88e6352_switch_driver;
 
 #define REG_READ(addr, reg)						\
 	({								\

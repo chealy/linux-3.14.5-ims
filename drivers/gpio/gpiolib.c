@@ -1587,6 +1587,9 @@ int gpio_request_one(unsigned gpio, unsigned long flags, const char *label)
 	if (flags & GPIOF_OPEN_SOURCE)
 		set_bit(FLAG_OPEN_SOURCE, &desc->flags);
 
+	if (flags & GPIOF_ACTIVE_LOW)
+		set_bit(FLAG_ACTIVE_LOW, &desc->flags);
+
 	if (flags & GPIOF_DIR_IN)
 		err = gpiod_direction_input(desc);
 	else
@@ -1785,6 +1788,10 @@ int gpiod_direction_output(struct gpio_desc *desc, int value)
 			  __func__);
 		return -EIO;
 	}
+
+	/* Need raw pin value */
+	if (test_bit(FLAG_ACTIVE_LOW, &desc->flags))
+		value = !value;
 
 	/* Open drain pin should not be driven to 1 */
 	if (value && test_bit(FLAG_OPEN_DRAIN,  &desc->flags))

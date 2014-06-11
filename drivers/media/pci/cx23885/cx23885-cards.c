@@ -897,6 +897,10 @@ struct cx23885_subid cx23885_subids[] = {
 		.subvendor = 0x1461,
 		.subdevice = 0xd939,
 		.card      = CX23885_BOARD_AVERMEDIA_HC81R,
+	}, {
+		.subvendor = 0x0000,
+		.subdevice = 0x0000,
+		.card      = CX23885_BOARD_MPX885,
 	},
 };
 const unsigned int cx23885_idcount = ARRAY_SIZE(cx23885_subids);

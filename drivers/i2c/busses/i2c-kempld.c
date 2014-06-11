@@ -76,7 +76,7 @@ module_param(bus_frequency, uint, 0);
 MODULE_PARM_DESC(bus_frequency, "Set I2C bus frequency in kHz (default="
 				__MODULE_STRING(KEMPLD_I2C_FREQ_STD)")");
 
-static int i2c_bus = -1;
+static int i2c_bus = 9;
 module_param(i2c_bus, int, 0);
 MODULE_PARM_DESC(i2c_bus, "Set I2C bus number (default=-1 for dynamic assignment)");
 

@@ -929,7 +929,7 @@ static struct dsa_chip_data switch_chip_data = {
         .port_names[3]	= "port3",
         .port_names[4]	= "host2esb",
         .port_names[5]	= 0,	/* unused */
-	.flags		= DSA_CREATE_CPU_IF,
+	.flags		= DSA_IS_UNMANAGED | DSA_CREATE_CPU_IF,
 	// .flags		= DSA_IS_UNMANAGED | DSA_CREATE_CPU_IF,
 };
 

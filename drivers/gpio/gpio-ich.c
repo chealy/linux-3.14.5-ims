@@ -386,6 +386,9 @@ static const struct irq_domain_ops ichx_gpio_irq_ops = {
 	.map = ichx_gpio_irq_map,
 };
 
+/* Allow overriding default gpio pin names */
+const char * const __weak ichx_gpiolib_names[128];
+
 static void ichx_gpiolib_setup(struct gpio_chip *chip)
 {
 	chip->owner = THIS_MODULE;
@@ -406,6 +409,7 @@ static void ichx_gpiolib_setup(struct gpio_chip *chip)
 	chip->can_sleep = false;
 	chip->dbg_show = NULL;
 	chip->to_irq = ichx_gpio_to_irq;
+	chip->names = ichx_gpiolib_names;
 }
 
 /* ICH6-based, 631xesb-based */

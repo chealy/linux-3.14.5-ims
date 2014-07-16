@@ -49,6 +49,9 @@ struct scu_pic_data {
 	u8 version_major;
 	u8 version_minor;
 	u8 reset_reason;
+	u8 fan_contr_model;
+	u8 fan_contr_rev;
+	u8 reset_pin_state;
 
 	bool valid;			/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
@@ -152,13 +155,76 @@ scu_pic_write_value(struct i2c_client *client, u8 reg, u8 value)
 
 /* hardware monitoring */
 
-static struct scu_pic_data * get_reset_reason(struct device *dev) 
+static struct scu_pic_data * get_fan_contr_model(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct scu_pic_data *data = i2c_get_clientdata(client);
+	/*
+	 * Get the fan controller model from the PIC
+	*/
+	data->fan_contr_model = scu_pic_read_value(client, I2C_GET_SCU_PIC_FAN_CONTR_MODEL);
+
+	return data;
+}
+
+static ssize_t show_fan_contr_model(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct scu_pic_data *data = get_fan_contr_model(dev);
+	return sprintf(buf, "%d\n", data->fan_contr_model);
+}
+
+static DEVICE_ATTR(fan_contr_model, S_IRUGO, show_fan_contr_model, NULL);
+
+static struct scu_pic_data * get_fan_contr_rev(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct scu_pic_data *data = i2c_get_clientdata(client);
+	/*
+	 * Get the fan controller revision from the PIC
+	*/
+	data->fan_contr_rev = scu_pic_read_value(client, I2C_GET_SCU_PIC_FAN_CONTR_REV);
+
+	return data;
+}
+
+static ssize_t show_fan_contr_rev(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct scu_pic_data *data = get_fan_contr_rev(dev);
+	return sprintf(buf, "%d\n", data->fan_contr_rev);
+}
+
+static DEVICE_ATTR(fan_contr_rev, S_IRUGO, show_fan_contr_rev, NULL);
+
+static struct scu_pic_data * get_reset_pin_state(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct scu_pic_data *data = i2c_get_clientdata(client);
+	/*
+	 * Get the reset pin state from the PIC
+	*/
+	data->reset_pin_state = scu_pic_read_value(client, I2C_GET_SCU_PIC_RESET_PIN_STATE);
+
+	return data;
+}
+
+static ssize_t show_reset_pin_state(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct scu_pic_data *data = get_reset_pin_state(dev);
+	return sprintf(buf, "%d\n", data->reset_pin_state);
+}
+
+static DEVICE_ATTR(reset_pin_state, S_IRUGO, show_reset_pin_state, NULL);
+
+static struct scu_pic_data * get_reset_reason(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct scu_pic_data *data = i2c_get_clientdata(client);
 	/*
 	 * Get the reset reason from the PIC
-     */
+	*/
 	data->reset_reason = scu_pic_read_value(client, I2C_GET_SCU_PIC_RESET_REASON);
 
 	return data;
@@ -397,6 +463,9 @@ static struct attribute *scu_pic_attributes[] = {
 	&dev_attr_version.attr,
 	&dev_attr_reset.attr,
 	&dev_attr_reset_reason.attr,
+	&dev_attr_fan_contr_model.attr,
+	&dev_attr_fan_contr_rev.attr,
+	&dev_attr_reset_pin_state.attr,
 	NULL
 };
 

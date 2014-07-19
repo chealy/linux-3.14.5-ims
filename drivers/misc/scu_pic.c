@@ -52,6 +52,7 @@ struct scu_pic_data {
 	u8 fan_contr_model;
 	u8 fan_contr_rev;
 	u8 reset_pin_state;
+	u8 thermal_override_state;
 
 	bool valid;			/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
@@ -196,6 +197,27 @@ static ssize_t show_fan_contr_rev(struct device *dev,
 }
 
 static DEVICE_ATTR(fan_contr_rev, S_IRUGO, show_fan_contr_rev, NULL);
+
+static struct scu_pic_data * get_thermal_override_state(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct scu_pic_data *data = i2c_get_clientdata(client);
+	/*
+	 * Get the thermal override state from the PIC
+	*/
+	data->thermal_override_state = scu_pic_read_value(client, I2C_GET_SCU_PIC_THERMAL_OVERRIDE_STATE);
+
+	return data;
+}
+
+static ssize_t show_thermal_override_state(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct scu_pic_data *data = get_thermal_override_state(dev);
+	return sprintf(buf, "%d\n", data->thermal_override_state);
+}
+
+static DEVICE_ATTR(thermal_override_state, S_IRUGO, show_thermal_override_state, NULL);
 
 static struct scu_pic_data * get_reset_pin_state(struct device *dev)
 {
@@ -466,6 +488,7 @@ static struct attribute *scu_pic_attributes[] = {
 	&dev_attr_fan_contr_model.attr,
 	&dev_attr_fan_contr_rev.attr,
 	&dev_attr_reset_pin_state.attr,
+	&dev_attr_thermal_override_state.attr,
 	NULL
 };
 

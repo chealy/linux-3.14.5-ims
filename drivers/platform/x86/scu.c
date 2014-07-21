@@ -35,7 +35,6 @@
 #include <linux/version.h>
 #include <linux/platform_data/at24.h>
 #include <linux/platform_data/pca953x.h>
-#include <linux/lis3lv02d.h>
 #include <linux/sysfs.h>
 #include <linux/spi/spi.h>
 #include <linux/proc_fs.h>
@@ -92,7 +91,11 @@ struct __packed eeprom_data {
 				/* 61 - 67 Base Board Serial Number */
 	unsigned char board_date_of_manufacture[7];
 				/* 68 - 74 Base Board Date of Manufacture */
-	unsigned char dummy[21];/* 75 - 95 spare/filler */
+	unsigned char updated_board_date_of_manufacture[7];
+				/* 75 - 81 Updated Box Date of Manufacture */
+	unsigned char updated_board_revision[7];
+				/* 82 - 88 Updated Box Revision */
+	unsigned char dummy[7];	/* 89 - 95 spare/filler */
 };
 
 enum scu_version { scu1, scu2, scu3, unknown };
@@ -235,7 +238,8 @@ static ssize_t scu_object_store(struct scu_data *data, int offset,
 	/* Write entire eeprom if it was marked invalid */
 	if (!data->eeprom_valid) {
 		offset = 0;
-		len = data->pdata->eeprom_len;
+		/* Write checksumed and non checksumed data */
+		len = sizeof(data->eeprom);
 		out = (char *)&data->eeprom;
 	}
 
@@ -246,10 +250,16 @@ static ssize_t scu_object_store(struct scu_data *data, int offset,
 			ret = -EIO;
 		goto error;
 	}
-	ret = scu_update_checksum(data);
-	if (ret < 0) {
-		data->eeprom_valid = false;
-		goto error;
+	if (offset < data->pdata->eeprom_len) {
+		/*
+		 * Write to checksummed area of eeprom
+		 * Update checksum
+		 */
+		ret = scu_update_checksum(data);
+		if (ret < 0) {
+			data->eeprom_valid = false;
+			goto error;
+		}
 	}
 	data->eeprom_valid = true;
 error:
@@ -445,16 +455,70 @@ static ssize_t board_date_of_manufacture_store(struct device *dev,
 	return ret < 0 ? ret : count;
 }
 
+static ssize_t
+updated_board_revision_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
+{
+	struct scu_data *data = dev_get_drvdata(dev);
+
+	return scu_object_show(buf, data->eeprom.updated_board_revision,
+			       sizeof(data->eeprom.updated_board_revision));
+}
+
+static ssize_t
+updated_board_revision_store(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	struct scu_data *data = dev_get_drvdata(dev);
+	int ret;
+
+	ret = scu_object_store(data,
+				offsetof(struct eeprom_data,
+					 updated_board_revision),
+				buf, data->eeprom.updated_board_revision,
+				sizeof(data->eeprom.updated_board_revision));
+	return ret < 0 ? ret : count;
+}
+
+static ssize_t
+updated_board_date_of_manufacture_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct scu_data *data = dev_get_drvdata(dev);
+
+	return scu_object_show(buf,
+			data->eeprom.updated_board_date_of_manufacture,
+			sizeof(data->eeprom.updated_board_date_of_manufacture));
+}
+
+static ssize_t
+updated_board_date_of_manufacture_store(struct device *dev,
+					struct device_attribute *devattr,
+					const char *buf, size_t count)
+{
+	struct scu_data *data = dev_get_drvdata(dev);
+	int ret;
+
+	ret = scu_object_store(data,
+			offsetof(struct eeprom_data,
+				 updated_board_date_of_manufacture),
+			buf, data->eeprom.updated_board_date_of_manufacture,
+			sizeof(data->eeprom.updated_board_date_of_manufacture));
+	return ret < 0 ? ret : count;
+}
+
 static DEVICE_ATTR_RO(board_type);
 static DEVICE_ATTR_RW(attribute_magic);
 static DEVICE_ATTR_RW(lru_part_number);
 static DEVICE_ATTR_RW(lru_serial_number);
 static DEVICE_ATTR_RW(lru_revision);
 static DEVICE_ATTR_RW(lru_date_of_manufacture);	/* SCU2/SCU3 only */
-static DEVICE_ATTR_RW(board_part_number);
-static DEVICE_ATTR_RW(board_serial_number);
-static DEVICE_ATTR_RW(board_revision);
-static DEVICE_ATTR_RW(board_date_of_manufacture);
+static DEVICE_ATTR_RW(board_part_number);		/* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(board_serial_number);		/* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(board_revision);			/* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(board_date_of_manufacture); /* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(updated_board_revision);	/* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(updated_board_date_of_manufacture); /* SCU2/SCU3 only */
 
 static struct attribute *scu_base_attrs[] = {
 	&dev_attr_board_type.attr,
@@ -475,6 +539,8 @@ static struct attribute *scu_eeprom_attrs[] = {
 	&dev_attr_board_serial_number.attr,
 	&dev_attr_board_revision.attr,
 	&dev_attr_board_date_of_manufacture.attr,
+	&dev_attr_updated_board_revision.attr,
+	&dev_attr_updated_board_date_of_manufacture.attr,
 	NULL
 };
 

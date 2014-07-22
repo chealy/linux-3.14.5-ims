@@ -91,9 +91,9 @@ struct __packed eeprom_data {
 				/* 61 - 67 Base Board Serial Number */
 	unsigned char board_date_of_manufacture[7];
 				/* 68 - 74 Base Board Date of Manufacture */
-	unsigned char updated_board_date_of_manufacture[7];
+	unsigned char board_updated_date_of_manufacture[7];
 				/* 75 - 81 Updated Box Date of Manufacture */
-	unsigned char updated_board_revision[7];
+	unsigned char board_updated_revision[7];
 				/* 82 - 88 Updated Box Revision */
 	unsigned char dummy[7];	/* 89 - 95 spare/filler */
 };
@@ -456,17 +456,17 @@ static ssize_t board_date_of_manufacture_store(struct device *dev,
 }
 
 static ssize_t
-updated_board_revision_show(struct device *dev, struct device_attribute *attr,
+board_updated_revision_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
 {
 	struct scu_data *data = dev_get_drvdata(dev);
 
-	return scu_object_show(buf, data->eeprom.updated_board_revision,
-			       sizeof(data->eeprom.updated_board_revision));
+	return scu_object_show(buf, data->eeprom.board_updated_revision,
+			       sizeof(data->eeprom.board_updated_revision));
 }
 
 static ssize_t
-updated_board_revision_store(struct device *dev, struct device_attribute *attr,
+board_updated_revision_store(struct device *dev, struct device_attribute *attr,
 			     const char *buf, size_t count)
 {
 	struct scu_data *data = dev_get_drvdata(dev);
@@ -474,25 +474,25 @@ updated_board_revision_store(struct device *dev, struct device_attribute *attr,
 
 	ret = scu_object_store(data,
 				offsetof(struct eeprom_data,
-					 updated_board_revision),
-				buf, data->eeprom.updated_board_revision,
-				sizeof(data->eeprom.updated_board_revision));
+					 board_updated_revision),
+				buf, data->eeprom.board_updated_revision,
+				sizeof(data->eeprom.board_updated_revision));
 	return ret < 0 ? ret : count;
 }
 
 static ssize_t
-updated_board_date_of_manufacture_show(struct device *dev,
+board_updated_date_of_manufacture_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
 	struct scu_data *data = dev_get_drvdata(dev);
 
 	return scu_object_show(buf,
-			data->eeprom.updated_board_date_of_manufacture,
-			sizeof(data->eeprom.updated_board_date_of_manufacture));
+			data->eeprom.board_updated_date_of_manufacture,
+			sizeof(data->eeprom.board_updated_date_of_manufacture));
 }
 
 static ssize_t
-updated_board_date_of_manufacture_store(struct device *dev,
+board_updated_date_of_manufacture_store(struct device *dev,
 					struct device_attribute *devattr,
 					const char *buf, size_t count)
 {
@@ -501,9 +501,9 @@ updated_board_date_of_manufacture_store(struct device *dev,
 
 	ret = scu_object_store(data,
 			offsetof(struct eeprom_data,
-				 updated_board_date_of_manufacture),
-			buf, data->eeprom.updated_board_date_of_manufacture,
-			sizeof(data->eeprom.updated_board_date_of_manufacture));
+				 board_updated_date_of_manufacture),
+			buf, data->eeprom.board_updated_date_of_manufacture,
+			sizeof(data->eeprom.board_updated_date_of_manufacture));
 	return ret < 0 ? ret : count;
 }
 
@@ -517,8 +517,8 @@ static DEVICE_ATTR_RW(board_part_number);		/* SCU2/SCU3 only */
 static DEVICE_ATTR_RW(board_serial_number);		/* SCU2/SCU3 only */
 static DEVICE_ATTR_RW(board_revision);			/* SCU2/SCU3 only */
 static DEVICE_ATTR_RW(board_date_of_manufacture); /* SCU2/SCU3 only */
-static DEVICE_ATTR_RW(updated_board_revision);	/* SCU2/SCU3 only */
-static DEVICE_ATTR_RW(updated_board_date_of_manufacture); /* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(board_updated_revision);	/* SCU2/SCU3 only */
+static DEVICE_ATTR_RW(board_updated_date_of_manufacture); /* SCU2/SCU3 only */
 
 static struct attribute *scu_base_attrs[] = {
 	&dev_attr_board_type.attr,
@@ -539,8 +539,8 @@ static struct attribute *scu_eeprom_attrs[] = {
 	&dev_attr_board_serial_number.attr,
 	&dev_attr_board_revision.attr,
 	&dev_attr_board_date_of_manufacture.attr,
-	&dev_attr_updated_board_revision.attr,
-	&dev_attr_updated_board_date_of_manufacture.attr,
+	&dev_attr_board_updated_revision.attr,
+	&dev_attr_board_updated_date_of_manufacture.attr,
 	NULL
 };
 

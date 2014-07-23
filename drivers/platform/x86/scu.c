@@ -104,7 +104,7 @@ struct scu_data;
 
 struct scu_platform_data {
 	const char *board_type;
-	const char *part_number;
+	const char *lru_part_number;
 	enum scu_version version;
 	int eeprom_len;
 	struct i2c_board_info *i2c_board_info;
@@ -140,9 +140,9 @@ struct scu_data {
 #define SCU_EEPROM_LEN_GEN2	75
 #define SCU_EEPROM_LEN_GEN3	75		/* Preliminary */
 
-#define SCU_PARTNUM_GEN1	"00-5001"
-#define SCU_PARTNUM_GEN2	"00-5010"
-#define SCU_PARTNUM_GEN3	"00-5013"
+#define SCU_LRU_PARTNUM_GEN1	"00-5001"
+#define SCU_LRU_PARTNUM_GEN2	"00-5010"
+#define SCU_LRU_PARTNUM_GEN3	"00-5013"
 
 #define SCU_WRITE_MAGIC		5482328594ULL
 
@@ -1130,7 +1130,7 @@ static struct spi_board_info scu_spi_info[] = {
 static struct scu_platform_data scu_platform_data[] = {
 	[scu1] = {
 		.board_type = "SCU1 x86",
-		.part_number = SCU_PARTNUM_GEN1,
+		.lru_part_number = SCU_LRU_PARTNUM_GEN1,
 		.version = scu1,
 		.eeprom_len = SCU_EEPROM_LEN_GEN1,
 		.i2c_board_info = scu_i2c_info_scu2,
@@ -1140,7 +1140,7 @@ static struct scu_platform_data scu_platform_data[] = {
 	},
 	[scu2] = {
 		.board_type = "SCU2 x86",
-		.part_number = SCU_PARTNUM_GEN2,
+		.lru_part_number = SCU_LRU_PARTNUM_GEN2,
 		.version = scu2,
 		.eeprom_len = SCU_EEPROM_LEN_GEN2,
 		.i2c_board_info = scu_i2c_info_scu2,
@@ -1150,7 +1150,7 @@ static struct scu_platform_data scu_platform_data[] = {
 	},
 	[scu3] = {
 		.board_type = "SCU3 x86",
-		.part_number = SCU_PARTNUM_GEN3,
+		.lru_part_number = SCU_LRU_PARTNUM_GEN3,
 		.version = scu3,
 		.eeprom_len = SCU_EEPROM_LEN_GEN3,
 		.i2c_board_info = scu_i2c_info_scu3,
@@ -1211,6 +1211,28 @@ static int scu_instantiate_spi(struct scu_data *data,
 	return 0;
 }
 
+static void populate_unit_info(struct memory_accessor *mem_accessor,
+			       void *context);
+
+static struct at24_platform_data at24c08 = {
+	.byte_len = 1024,
+	.page_size = 16,
+	.setup = populate_unit_info,
+};
+
+static struct i2c_board_info scu_i2c_info_common[] = {
+	{ I2C_BOARD_INFO("scu_pic", 0x20)},
+	{ I2C_BOARD_INFO("at24", 0x54),
+		.platform_data = &at24c08},
+	{ I2C_BOARD_INFO("ds1682", 0x6b)},
+	{ I2C_BOARD_INFO("pca9538", 0x71),
+		.platform_data = &scu_pca953x_pdata[1],},
+	{ I2C_BOARD_INFO("pca9538", 0x72),
+		.platform_data = &scu_pca953x_pdata[2],},
+	{ I2C_BOARD_INFO("pca9538", 0x73),
+		.platform_data = &scu_pca953x_pdata[3],},
+};
+
 /*
  * This is the callback function when a a specifc at24 eeprom is found.
  * Its reads out the eeprom contents via the read function passed back in via
@@ -1220,7 +1242,7 @@ static int scu_instantiate_spi(struct scu_data *data,
 static void populate_unit_info(struct memory_accessor *mem_accessor,
 			       void *context)
 {
-	const struct scu_platform_data *pdata;
+	const struct scu_platform_data *pdata = &scu_platform_data[unknown];
 	struct scu_data *data = context;
 	unsigned char *ptr;
 	int i, len;
@@ -1241,7 +1263,6 @@ static void populate_unit_info(struct memory_accessor *mem_accessor,
 	/* Special case - eeprom not programmed */
 	if (data->eeprom.length == 0xffff && data->eeprom.checksum == 0xff) {
 		/* Assume it is SCU3, but report different board type */
-		data->pdata = &scu_platform_data[unknown];
 		memset(&data->eeprom, '\0', sizeof(data->eeprom));
 		data->eeprom.length = cpu_to_le16(SCU_EEPROM_LEN_EEPROM);
 		goto unprogrammed;
@@ -1258,16 +1279,19 @@ static void populate_unit_info(struct memory_accessor *mem_accessor,
 
 	/* Update platform data based on part number retrieved from EEPROM */
 	for (i = 0; i < ARRAY_SIZE(scu_platform_data); i++) {
-		pdata = &scu_platform_data[i];
-		if (!strncmp(data->eeprom.lru_part_number, pdata->part_number,
-			     strlen(pdata->part_number))) {
-			data->pdata = pdata;
+		const struct scu_platform_data *tpdata = &scu_platform_data[i];
+		if (tpdata->lru_part_number == NULL)
+			continue;
+		if (!strncmp(data->eeprom.lru_part_number,
+			     tpdata->lru_part_number,
+			     strlen(tpdata->lru_part_number))) {
+			pdata = tpdata;
 			break;
 		}
 	}
 
 unprogrammed:
-	pdata = data->pdata;
+	data->pdata = pdata;
 	/*
 	 * We know as much as we will ever find out about the platform.
 	 * Perform final platform initialization and instantiate additional
@@ -1278,7 +1302,8 @@ unprogrammed:
 		pdata->init(data);
 
 	if (pdata->i2c_board_info)
-		scu_instantiate_i2c(data, 7, pdata->i2c_board_info,
+		scu_instantiate_i2c(data, ARRAY_SIZE(scu_i2c_info_common),
+				    pdata->i2c_board_info,
 				    pdata->num_i2c_board_info);
 
 	if (pdata->spi_board_info)
@@ -1311,25 +1336,6 @@ done:
 	if (sysfs_create_bin_file(&data->dev->kobj, &scu_eeprom_test_scratchpad_file))
 		;
 }
-
-static struct at24_platform_data at24c08 = {
-	.byte_len = 1024,
-	.page_size = 16,
-	.setup = populate_unit_info,
-};
-
-static struct i2c_board_info scu_i2c_info_common[] = {
-	{ I2C_BOARD_INFO("scu_pic", 0x20)},
-	{ I2C_BOARD_INFO("at24", 0x54),
-		.platform_data = &at24c08},
-	{ I2C_BOARD_INFO("ds1682", 0x6b)},
-	{ I2C_BOARD_INFO("pca9538", 0x71),
-		.platform_data = &scu_pca953x_pdata[1],},
-	{ I2C_BOARD_INFO("pca9538", 0x72),
-		.platform_data = &scu_pca953x_pdata[2],},
-	{ I2C_BOARD_INFO("pca9538", 0x73),
-		.platform_data = &scu_pca953x_pdata[3],},
-};
 
 static int scu_i2c_adap_name_match(struct device *dev, void *data)
 {
@@ -1430,9 +1436,6 @@ static int scu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
-	data->pdata = dev_get_platdata(dev);
-	if (!data->pdata)
-		return -ENODEV;
 	data->dev = dev;
 
 	mutex_init(&data->write_lock);
@@ -1502,7 +1505,7 @@ static int __exit scu_remove(struct platform_device *pdev)
 	sysfs_remove_group(&pdev->dev.kobj, &scu_eeprom_group);
 	sysfs_remove_group(&pdev->dev.kobj, &scu_base_group);
 
-	if (data->pdata->remove)
+	if (data->pdata && data->pdata->remove)
 		data->pdata->remove(data);
 
 	pca_leds_unregister(data);
@@ -1535,19 +1538,11 @@ static struct platform_device *scu_pdev;
 
 static int scu_create_platform_device(const struct dmi_system_id *id)
 {
-	struct scu_platform_data *pdata = id->driver_data;
 	int ret;
-
-	if (pdata == NULL)
-		return -EINVAL;
 
 	scu_pdev = platform_device_alloc("scu", -1);
 	if (!scu_pdev)
 		return -ENOMEM;
-
-	ret = platform_device_add_data(scu_pdev, pdata, sizeof(*pdata));
-	if (ret)
-		goto err;
 
 	ret = platform_device_add(scu_pdev);
 	if (ret)
@@ -1566,7 +1561,6 @@ static const struct dmi_system_id scu_device_table[] __initconst = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "Kontron"),
 			DMI_MATCH(DMI_BOARD_NAME, "PXT"),
 		},
-		.driver_data = &scu_platform_data[scu1],
 		.callback = scu_create_platform_device,
 	},
 	{
@@ -1575,7 +1569,6 @@ static const struct dmi_system_id scu_device_table[] __initconst = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "Kontron"),
 			DMI_MATCH(DMI_BOARD_NAME, "COMe-bSC6"),
 		},
-		.driver_data = &scu_platform_data[scu2],
 		.callback = scu_create_platform_device,
 	},
 	{
@@ -1584,7 +1577,6 @@ static const struct dmi_system_id scu_device_table[] __initconst = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "Kontron"),
 			DMI_MATCH(DMI_BOARD_NAME, "COMe-bIP2"),
 		},
-		.driver_data = &scu_platform_data[scu2],
 		.callback = scu_create_platform_device,
 	},
 	{
@@ -1593,7 +1585,6 @@ static const struct dmi_system_id scu_device_table[] __initconst = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "Kontron"),
 			DMI_MATCH(DMI_BOARD_NAME, "COMe-bSC2"),
 		},
-		.driver_data = &scu_platform_data[scu2],
 		.callback = scu_create_platform_device,
 	},
 	{ }

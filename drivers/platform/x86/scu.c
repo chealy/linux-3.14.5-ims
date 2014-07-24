@@ -998,10 +998,10 @@ static struct i2c_board_info scu_i2c_info_scu3[] = {
 
 /* SCU specific gpio pin names. Only works if module is built into kernel. */
 const char * const ichx_gpiolib_names[128] = {
-	NULL,				/* GPI0 */
-	NULL,				/* GPI1 */
-	NULL,				/* GPI2 */
-	"ac_loss_detect",	/* GPI3 */
+	"switch_interrupt",	/* GPI0 - GPIO0 */
+	NULL,				/* GPI1 - GPIO1 */
+	NULL,				/* GPI2 - GPIO2 */
+	"ac_loss_detect",	/* GPI3 - GPIO3 */
 	NULL,
 	NULL,
 	NULL,
@@ -1014,7 +1014,12 @@ const char * const ichx_gpiolib_names[128] = {
 	NULL,
 	NULL,
 	NULL,
-	"debug_out",		/* GPO0 */
+	"debug_out",		/* GPO0 - GPIO16 */
+	NULL,				/* GPO1 - GPIO17 */
+	NULL,
+	NULL,
+	"switch_reset",		/* GPO3 - GPIO20 */
+	NULL,				/* GPO2 - GPIO21 */
 };
 
 static void pch_gpio_setup(struct scu_data *data)
@@ -1046,7 +1051,7 @@ static void pch_gpio_setup(struct scu_data *data)
 			data->mdio_dev = NULL;
 		}
 		/* generic: 0, 3 (input), 16, 20 (output) */
-		scu_gpio_common_setup(chip->base, 22, 0x110009, 0x00000b, 0x0,
+		scu_gpio_common_setup(chip->base, 22, 0x110009, 0x00000b, 0x100000,
 				      0x0);
 	}
 }

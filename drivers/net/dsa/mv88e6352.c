@@ -1383,7 +1383,7 @@ static ssize_t packet_generator_count_store(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	ps->packet_generator_count = clamp_val(val, 1, 255);
+	ps->packet_generator_count = clamp_val(val, 0, 255);
 
 	return count;
 }
@@ -1401,7 +1401,7 @@ static ssize_t packet_generator_show(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	return sprintf(buf, "%4x\n", ret);
+	return sprintf(buf, "%x\n", ((ret & 0x08) >> 3));
 }
 
 static ssize_t packet_generator_store(struct device *dev,
@@ -1411,7 +1411,7 @@ static ssize_t packet_generator_store(struct device *dev,
 	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
 	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
 	int port = dsa_slave_port(to_net_dev(dev));
-	int pcount = clamp_val(ps->packet_generator_count, 1, 255);
+	int pcount = clamp_val(ps->packet_generator_count, 0, 255);
 	unsigned int val;
 	int ret;
 

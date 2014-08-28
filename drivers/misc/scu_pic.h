@@ -25,6 +25,9 @@
 #define I2C_GET_SCU_PIC_RESET_PIN_STATE			0x1C
 #define I2C_GET_SCU_PIC_THERMAL_OVERRIDE_STATE		0x1D
 
+#define FAN_CONTR_MODEL_ADM1031				0x31
+#define FAN_CONTR_MODEL_MAX6639				0x58
+
 /*
  * State Definitions
  */

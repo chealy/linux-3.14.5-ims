@@ -71,7 +71,7 @@ enum {
 	ATA_ECAT_DUBIOUS_UNK_DEV	= 7,
 	ATA_ECAT_NR			= 8,
 
-	ATA_EH_CMD_DFL_TIMEOUT		=  5000,
+	ATA_EH_CMD_DFL_TIMEOUT		=  500,
 
 	/* always put at least this amount of time between resets */
 	ATA_EH_RESET_COOL_DOWN		=  5000,
@@ -3052,11 +3052,7 @@ static void ata_eh_park_issue_cmd(struct ata_device *dev, int park)
 	ata_tf_init(dev, &tf);
 	if (park) {
 		ehc->unloaded_mask |= 1 << dev->devno;
-		tf.command = ATA_CMD_IDLEIMMEDIATE;
-		tf.feature = 0x44;
-		tf.lbal = 0x4c;
-		tf.lbam = 0x4e;
-		tf.lbah = 0x55;
+		tf.command = ATA_CMD_SLEEP;
 	} else {
 		ehc->unloaded_mask &= ~(1 << dev->devno);
 		tf.command = ATA_CMD_CHK_POWER;
@@ -3065,7 +3061,7 @@ static void ata_eh_park_issue_cmd(struct ata_device *dev, int park)
 	tf.flags |= ATA_TFLAG_DEVICE | ATA_TFLAG_ISADDR;
 	tf.protocol |= ATA_PROT_NODATA;
 	err_mask = ata_exec_internal(dev, &tf, NULL, DMA_NONE, NULL, 0, 0);
-	if (park && (err_mask || tf.lbal != 0xc4)) {
+	if (park && err_mask) {
 		ata_dev_err(dev, "head unload failed!\n");
 		ehc->unloaded_mask &= ~(1 << dev->devno);
 	}

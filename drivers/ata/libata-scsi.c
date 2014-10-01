@@ -240,6 +240,8 @@ static ssize_t ata_scsi_park_store(struct device *device,
 		goto unlock;
 	}
 
+	ata_dev_printk(dev, KERN_INFO, "unload_heads called with timeout value of %d milliseconds\n", input);
+
 	if (input >= 0) {
 		if (dev->flags & ATA_DFLAG_NO_UNLOAD) {
 			rc = -EOPNOTSUPP;

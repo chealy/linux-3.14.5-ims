@@ -91,7 +91,9 @@ static DEFINE_MUTEX(scu_pic_data_mutex);
 
 static void scu_pic_release_resources(struct kref *ref)
 {
-	struct scu_pic_data *data = container_of(ref, struct scu_pic_data, kref);
+	struct scu_pic_data *data =
+		container_of(ref, struct scu_pic_data, kref);
+
 	kfree(data);
 }
 
@@ -107,8 +109,9 @@ static int nowayout = WATCHDOG_NOWAYOUT;
 module_param(nowayout, int, 0);
 MODULE_PARM_DESC(nowayout, "Watchdog cannot be stopped once started");
 
-static int scu_pic_xfer(struct i2c_adapter *adapter, u16 addr, unsigned short flags,
-		    bool is_read, u8 command, u8 *data)
+static int scu_pic_xfer(struct i2c_adapter *adapter, u16 addr,
+			unsigned short flags, bool is_read, u8 command,
+			u8 *data)
 {
 	unsigned char msgbuf0[4];
 	unsigned char msgbuf1[2];
@@ -165,7 +168,8 @@ static int get_thermal_override_state(struct i2c_client *client)
 	/*
 	 * Get the thermal override state from the PIC
 	 */
-	return scu_pic_read_value(client, I2C_GET_SCU_PIC_THERMAL_OVERRIDE_STATE);
+	return scu_pic_read_value(client,
+				  I2C_GET_SCU_PIC_THERMAL_OVERRIDE_STATE);
 }
 
 static ssize_t show_thermal_override_state(struct device *dev,
@@ -179,11 +183,11 @@ static ssize_t show_thermal_override_state(struct device *dev,
 	return sprintf(buf, "%d\n", state);
 }
 
-static DEVICE_ATTR(thermal_override_state, S_IRUGO, show_thermal_override_state, NULL);
+static DEVICE_ATTR(thermal_override_state, S_IRUGO,
+		   show_thermal_override_state, NULL);
 
 static int get_reset_pin_state(struct i2c_client *client)
 {
-
 	/*
 	 * Get the reset pin state from the PIC
 	 */
@@ -241,9 +245,12 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 	 * before updating data.
 	 */
 	if (time_after(jiffies, data->last_updated + HZ + 1) || !data->valid) {
-		data->fan[0] = scu_pic_read_value(client, I2C_GET_SCU_PIC_FAN1_SPEED);
-		data->fan[1] = scu_pic_read_value(client, I2C_GET_SCU_PIC_FAN2_SPEED);
-		reg = scu_pic_read_value(client, I2C_GET_SCU_PIC_THERMAL_CONTROL_STATE);
+		data->fan[0] = scu_pic_read_value(client,
+						  I2C_GET_SCU_PIC_FAN1_SPEED);
+		data->fan[1] = scu_pic_read_value(client,
+						  I2C_GET_SCU_PIC_FAN2_SPEED);
+		reg = scu_pic_read_value(client,
+					 I2C_GET_SCU_PIC_THERMAL_CONTROL_STATE);
 		if (reg == 1) {		/* auto */
 			data->pwm_state = 2;
 			data->pwm = 255;
@@ -255,8 +262,10 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 			else
 				data->pwm = 255;
 		}
-		data->temp[0] = scu_pic_read_value(client, I2C_GET_SCU_PIC_LOCAL_TEMP);
-		data->temp[1] = scu_pic_read_value(client, I2C_GET_SCU_PIC_REMOTE_TEMP);
+		data->temp[0] = scu_pic_read_value(client,
+						   I2C_GET_SCU_PIC_LOCAL_TEMP);
+		data->temp[1] = scu_pic_read_value(client,
+						   I2C_GET_SCU_PIC_REMOTE_TEMP);
 
 		data->last_updated = jiffies;
 		data->valid = 1;
@@ -266,10 +275,11 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 	return data;
 }
 
-static ssize_t show_pwm(struct device *dev,
-			struct device_attribute *attr, char *buf)
+static ssize_t show_pwm(struct device *dev, struct device_attribute *attr,
+			char *buf)
 {
 	struct scu_pic_data *data = scu_pic_update_device(dev);
+
 	return sprintf(buf, "%d\n", data->pwm);
 }
 
@@ -304,6 +314,7 @@ static ssize_t show_pwm_enable(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
 	struct scu_pic_data *data = scu_pic_update_device(dev);
+
 	return sprintf(buf, "%d\n", data->pwm_state);
 }
 
@@ -410,7 +421,8 @@ static ssize_t show_version(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct scu_pic_data *data = i2c_get_clientdata(client);
 
-	return sprintf(buf, "%u.%02u\n", data->version_major, data->version_minor);
+	return sprintf(buf, "%u.%02u\n", data->version_major,
+		       data->version_minor);
 }
 
 static DEVICE_ATTR(version, S_IRUGO, show_version, NULL);
@@ -425,7 +437,8 @@ void mach_reboot_fixups(void)
 {
 	/* Don't bother about mutexes here */
 	if (scu_pic_reset_client)
-		scu_pic_write_value(scu_pic_reset_client, I2C_SET_SCU_PIC_RESET_HOST, 1);
+		scu_pic_write_value(scu_pic_reset_client,
+				    I2C_SET_SCU_PIC_RESET_HOST, 1);
 
 	/* is 20 ms enough time ? */
 	mdelay(20);
@@ -565,7 +578,8 @@ static int scu_pic_wdt_ping(struct watchdog_device *wdev)
 	mutex_lock(&data->i2c_lock);
 	/* Any host communication resets watchdog */
 	if (data->client)
-		(void)scu_pic_read_value(data->client, I2C_GET_SCU_PIC_WDT_STATE);
+		(void)scu_pic_read_value(data->client,
+					 I2C_GET_SCU_PIC_WDT_STATE);
 	mod_timer(&data->wdt_timer,
 		  jiffies + min_t(unsigned long, SCU_PIC_WDT_TIMEOUT / 2,
 				  wdev->timeout) * HZ);
@@ -617,7 +631,7 @@ static void scu_pic_wdt_timerfunc(unsigned long d)
 	struct scu_pic_data *data = watchdog_get_drvdata(wdev);
 
 	if (time_after(jiffies, data->wdt_lastping + wdev->timeout * HZ)) {
-	        pr_crit("Software watchdog timeout: Initiating system reboot.\n");
+		pr_crit("Software watchdog timeout: Initiating system reboot.\n");
 		emergency_restart();
 	}
 	scu_pic_wdt_ping(wdev);
@@ -746,9 +760,9 @@ static int scu_pic_probe(struct i2c_client *client,
 	data->version_minor = minor;
 
 	/*
- 	 * If the FW is older than major version 6, there is no
- 	 * support for reading the fan controller model or rev. So
- 	 * just assume that it is the older ADM1031 board.
+	 * If the FW is older than major version 6, there is no
+	 * support for reading the fan controller model or rev. So
+	 * just assume that it is the older ADM1031 board.
 	 */
 	if (data->version_major >= 6) {
 		model = scu_pic_read_value(client,

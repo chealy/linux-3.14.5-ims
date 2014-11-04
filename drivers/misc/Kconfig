@@ -516,9 +516,16 @@ config SRAM
 	  areas found on many SoCs.
 
 config SCU_PIC
-	bool "SCU pic driver"
+	bool "SCU PIC driver"
 	help
-	  This is the SCU pic driver
+	  This is the SCU PIC driver
+
+config SCU_PIC_FAULT_INJECTION
+       bool "SCU PIC fault injection support"
+       help
+         Enabling this option allows the firmware update process of the SCU
+         PIC driver to be interrupted at various points, simulating loss of
+         power during an update.
 
 config SPI_ROBODEBUG
 	bool "Broadcom RoboSwitch debug driver"

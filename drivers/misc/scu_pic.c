@@ -98,7 +98,7 @@ struct scu_pic_data {
 	u8 fan[2];
 	u8 pwm_state;	/* same for both fans, only one control available */
 	u8 pwm;		/* for manual control, only off/on supported */
-	s8 temp[2];
+	u8 temp[5][2];  /* local, remote, ps, bottom, top respectively */
 
 	/* wdt data */
 	struct watchdog_device wdt_dev;
@@ -134,8 +134,6 @@ static void scu_pic_release_resources(struct kref *ref)
 
 #define WDT_IN_USE			0
 #define WDT_EXPECT_CLOSE		1
-
-#define TEMP_FROM_REG(val)		((val) * 1000)
 
 #define SCU_PIC_WDT_TIMEOUT	300		/* 5 minutes */
 
@@ -381,10 +379,25 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 			else
 				data->pwm = 255;
 		}
-		data->temp[0] = scu_pic_read_byte(client,
-						  I2C_GET_SCU_PIC_LOCAL_TEMP);
-		data->temp[1] = scu_pic_read_byte(client,
-						  I2C_GET_SCU_PIC_REMOTE_TEMP);
+		data->temp[0][0] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LOCAL_TEMP);
+		data->temp[1][0] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_REMOTE_TEMP);
+
+		data->temp[2][0] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_PS_TEMP_H);
+		data->temp[2][1] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_PS_TEMP_L);
+
+		data->temp[3][0] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_BOTTOM_AIRFLOW_TEMP_H);
+		data->temp[3][1] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_BOTTOM_AIRFLOW_TEMP_L);
+
+		data->temp[4][0] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_TOP_AIRFLOW_TEMP_H);
+		data->temp[4][1] =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_TOP_AIRFLOW_TEMP_L);
 
 		data->last_updated = jiffies;
 		data->valid = 1;
@@ -516,23 +529,48 @@ static ssize_t show_temp(struct device *dev,
 {
 	int nr = to_sensor_dev_attr(attr)->index;
 	struct scu_pic_data *data = scu_pic_update_device(dev);
+	int temp;
 
-	return sprintf(buf, "%d\n", TEMP_FROM_REG(data->temp[nr]));
+	/*
+	 * Temperature is always considered as a 9-bit value with 0.5 degree
+	 * Celsius resolution (i.e. as for an LM75) even for ADM1031 / MAX6639
+	 * readings.
+	 */
+	if (data->temp[nr][0] != 0xFF || data->temp[nr][1] != 0xFF)
+		temp = ((s16)(data->temp[nr][0] << 8 | data->temp[nr][1]) >> 7) * 500;
+	else
+		temp = -128000;
+
+	return sprintf(buf, "%d\n", temp);
 }
 
 static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO,	show_temp, NULL, 0);
 static SENSOR_DEVICE_ATTR(temp2_input, S_IRUGO,	show_temp, NULL, 1);
+static SENSOR_DEVICE_ATTR(temp3_input, S_IRUGO,	show_temp, NULL, 2);
+static SENSOR_DEVICE_ATTR(temp4_input, S_IRUGO,	show_temp, NULL, 3);
+static SENSOR_DEVICE_ATTR(temp5_input, S_IRUGO,	show_temp, NULL, 4);
 
 static ssize_t show_label(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
+	char const * const LABEL[] = {
+		"local",
+		"remote",
+		"power_supply",
+		"front",
+		"back",
+	};
+
 	int nr = to_sensor_dev_attr(attr)->index;
 
-	return sprintf(buf, "%s\n", nr ? "remote" : "local");
+	return sprintf(buf, "%s\n", LABEL[nr]);
 }
 
 static SENSOR_DEVICE_ATTR(temp1_label, S_IRUGO,	show_label, NULL, 0);
 static SENSOR_DEVICE_ATTR(temp2_label, S_IRUGO,	show_label, NULL, 1);
+static SENSOR_DEVICE_ATTR(temp3_label, S_IRUGO,	show_label, NULL, 2);
+static SENSOR_DEVICE_ATTR(temp4_label, S_IRUGO,	show_label, NULL, 3);
+static SENSOR_DEVICE_ATTR(temp5_label, S_IRUGO,	show_label, NULL, 4);
 
 static ssize_t show_build_date(struct device *dev,
 			       struct device_attribute *attr, char *buf)
@@ -1402,8 +1440,14 @@ static struct attribute *scu_pic_attributes_v6[] = {
 	&dev_attr_pwm2_enable.attr,
 	&sensor_dev_attr_temp1_input.dev_attr.attr,
 	&sensor_dev_attr_temp2_input.dev_attr.attr,
+	&sensor_dev_attr_temp3_input.dev_attr.attr,
+	&sensor_dev_attr_temp4_input.dev_attr.attr,
+	&sensor_dev_attr_temp5_input.dev_attr.attr,
 	&sensor_dev_attr_temp1_label.dev_attr.attr,
 	&sensor_dev_attr_temp2_label.dev_attr.attr,
+	&sensor_dev_attr_temp3_label.dev_attr.attr,
+	&sensor_dev_attr_temp4_label.dev_attr.attr,
+	&sensor_dev_attr_temp5_label.dev_attr.attr,
 	&dev_attr_reset.attr,
 	&dev_attr_reset_reason.attr,
 	&dev_attr_reset_pin_state.attr,

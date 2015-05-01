@@ -105,6 +105,7 @@ struct scu_data;
 struct scu_platform_data {
 	const char *board_type;
 	const char *lru_part_number;
+	const char *board_part_number;
 	enum scu_version version;
 	int eeprom_len;
 	struct i2c_board_info *i2c_board_info;
@@ -143,6 +144,8 @@ struct scu_data {
 #define SCU_LRU_PARTNUM_GEN1	"00-5001"
 #define SCU_LRU_PARTNUM_GEN2	"00-5010"
 #define SCU_LRU_PARTNUM_GEN3	"00-5013"
+
+#define SCU_ZII_BOARD_PARTNUM	"05-0041"
 
 #define SCU_WRITE_MAGIC		5482328594ULL
 
@@ -1156,6 +1159,7 @@ static struct scu_platform_data scu_platform_data[] = {
 	[scu3] = {
 		.board_type = "SCU3 x86",
 		.lru_part_number = SCU_LRU_PARTNUM_GEN3,
+		.board_part_number = SCU_ZII_BOARD_PARTNUM,
 		.version = scu3,
 		.eeprom_len = SCU_EEPROM_LEN_GEN3,
 		.i2c_board_info = scu_i2c_info_scu3,
@@ -1293,6 +1297,20 @@ static void populate_unit_info(struct memory_accessor *mem_accessor,
 			pdata = tpdata;
 			break;
 		}
+	}
+
+	/* Check if we have an SCU2 with a Zii mainboard and update the struct if yes */
+	if (pdata->version == scu2 &&
+		!strncmp(data->eeprom.board_part_number,
+			SCU_ZII_BOARD_PARTNUM,
+			strlen(SCU_ZII_BOARD_PARTNUM))) {
+			struct scu_platform_data *newSCU2pdata = &scu_platform_data[scu2];
+		newSCU2pdata->spi_board_info = NULL;
+		newSCU2pdata->num_spi_board_info = 0;
+		newSCU2pdata->board_part_number = SCU_ZII_BOARD_PARTNUM;
+		newSCU2pdata->init = scu3_init;
+		newSCU2pdata->remove = scu3_remove;
+		pdata = newSCU2pdata;
 	}
 
 unprogrammed:

@@ -95,6 +95,7 @@ struct scu_pic_data {
 	bool valid;			/* true if following fields are valid */
 	unsigned long last_updated;	/* In jiffies */
 
+        u8 thermal_fault_state;
 	u8 fan[2];
 	u8 pwm_state;	/* same for both fans, only one control available */
 	u8 pwm;		/* for manual control, only off/on supported */
@@ -379,6 +380,8 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 			else
 				data->pwm = 255;
 		}
+                data->thermal_fault_state =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_THERMAL_FAULT_STATE);
 		data->temp[0][0] =
 			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LOCAL_TEMP);
 		data->temp[1][0] =
@@ -406,6 +409,15 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 
 	return data;
 }
+
+static ssize_t show_thermal_fault_state(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+    struct scu_pic_data * data = scu_pic_update_device(dev);
+    return sprintf(buf, "%d\n", data->thermal_fault_state);
+}
+
+static DEVICE_ATTR(thermal_fault_state, S_IRUGO, show_thermal_fault_state, NULL);
 
 static ssize_t show_pwm(struct device *dev, struct device_attribute *attr,
 			char *buf)
@@ -1452,6 +1464,7 @@ static struct attribute *scu_pic_attributes_v6[] = {
 	&dev_attr_reset_reason.attr,
 	&dev_attr_reset_pin_state.attr,
 	&dev_attr_thermal_override_state.attr,
+        &dev_attr_thermal_fault_state.attr,
 	&dev_attr_update_firmware.attr,
 #if defined(CONFIG_SCU_PIC_FAULT_INJECTION)
 	&dev_attr_update_firmware_fault.attr,

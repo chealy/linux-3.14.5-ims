@@ -96,6 +96,8 @@ struct scu_pic_data {
 	unsigned long last_updated;	/* In jiffies */
 
         u8 thermal_fault_state;
+	s8 ps_sensor_log;
+	s8 front_sensor_log;  /*Refered to as bottom sensor by firmware */
 	u8 fan[2];
 	u8 pwm_state;	/* same for both fans, only one control available */
 	u8 pwm;		/* for manual control, only off/on supported */
@@ -382,6 +384,10 @@ static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 		}
                 data->thermal_fault_state =
 			scu_pic_read_byte(client, I2C_GET_SCU_PIC_THERMAL_FAULT_STATE);
+		data->ps_sensor_log =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_PS_TEMP_LOG);
+		data->front_sensor_log =
+			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LM75_BOTTOM_AIRFLOW_TEMP_LOG);
 		data->temp[0][0] =
 			scu_pic_read_byte(client, I2C_GET_SCU_PIC_LOCAL_TEMP);
 		data->temp[1][0] =
@@ -418,6 +424,24 @@ static ssize_t show_thermal_fault_state(struct device *dev,
 }
 
 static DEVICE_ATTR(thermal_fault_state, S_IRUGO, show_thermal_fault_state, NULL);
+
+static ssize_t show_ps_sensor_log(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+    struct scu_pic_data * data = scu_pic_update_device(dev);
+    return sprintf(buf, "%d\n", data->ps_sensor_log);
+}
+
+static DEVICE_ATTR(ps_sensor_log, S_IRUGO, show_ps_sensor_log, NULL);
+
+static ssize_t show_front_sensor_log(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+    struct scu_pic_data * data = scu_pic_update_device(dev);
+    return sprintf(buf, "%d\n", data->front_sensor_log);
+}
+
+static DEVICE_ATTR(front_sensor_log, S_IRUGO, show_front_sensor_log, NULL);
 
 static ssize_t show_pwm(struct device *dev, struct device_attribute *attr,
 			char *buf)
@@ -1464,6 +1488,8 @@ static struct attribute *scu_pic_attributes_v6[] = {
 	&dev_attr_reset_reason.attr,
 	&dev_attr_reset_pin_state.attr,
 	&dev_attr_thermal_override_state.attr,
+	&dev_attr_ps_sensor_log.attr,
+	&dev_attr_front_sensor_log.attr,
         &dev_attr_thermal_fault_state.attr,
 	&dev_attr_update_firmware.attr,
 #if defined(CONFIG_SCU_PIC_FAULT_INJECTION)

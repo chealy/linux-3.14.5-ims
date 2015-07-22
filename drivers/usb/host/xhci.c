@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/dmi.h>
 #include <linux/dma-mapping.h>
+#include <linux/delay.h>
 
 #include "xhci.h"
 #include "xhci-trace.h"
@@ -43,6 +44,28 @@ MODULE_PARM_DESC(link_quirk, "Don't clear the chain bit on a link TRB");
 static unsigned int quirks;
 module_param(quirks, uint, S_IRUGO);
 MODULE_PARM_DESC(quirks, "Bit flags for quirks to be enabled as default");
+
+void tusb_w11(struct xhci_hcd *xhci)
+{
+	u32 val;
+	void __iomem *reg;
+
+	reg = (void __iomem *) xhci->cap_regs + 0xc12c;
+	val = readl(reg);
+	writel(0x0002403f, reg);
+	readl(reg);
+}
+
+void tusb_w12(struct xhci_hcd *xhci)
+{
+	u32 val;
+	void __iomem *reg;
+
+	reg = (void __iomem *) xhci->cap_regs + 0xc10c;
+	val = readl(reg);
+	writel(0x28400000, reg);
+	readl(reg);
+}
 
 /* TODO: copied from ehci-hcd.c - can this be refactored? */
 /*
@@ -107,6 +130,10 @@ int xhci_halt(struct xhci_hcd *xhci)
 {
 	int ret;
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "// Halt the HC");
+
+	if (xhci->quirks & XHCI_TUSB_SLOW_HALT);
+		msleep(2);
+
 	xhci_quiesce(xhci);
 
 	ret = xhci_handshake(xhci, &xhci->op_regs->status,
@@ -192,6 +219,12 @@ int xhci_reset(struct xhci_hcd *xhci)
 		xhci->bus_state[i].suspended_ports = 0;
 		xhci->bus_state[i].resuming_ports = 0;
 	}
+
+	if (xhci->quirks & XHCI_TUSB_RX_THRESHOLD)
+		tusb_w11(xhci);
+
+	if (xhci->quirks & XHCI_TUSB_TRANS_TIMEOUT)
+		tusb_w12(xhci);
 
 	return ret;
 }

@@ -35,6 +35,8 @@
 #define PCI_VENDOR_ID_ETRON		0x1b6f
 #define PCI_DEVICE_ID_ASROCK_P67	0x7023
 
+#define PCI_VENDOR_ID_TEXAS		0x104c
+
 #define PCI_DEVICE_ID_INTEL_LYNXPOINT_XHCI	0x8c31
 #define PCI_DEVICE_ID_INTEL_LYNXPOINT_LP_XHCI	0x9c31
 
@@ -48,7 +50,6 @@ static int xhci_pci_reinit(struct xhci_hcd *xhci, struct pci_dev *pdev)
 	 * TODO: see if there are any quirks that need to be added to handle
 	 * new extended capabilities.
 	 */
-
 	/* PCI Memory-Write-Invalidate cycle support is optional (uncommon) */
 	if (!pci_set_mwi(pdev))
 		xhci_dbg(xhci, "MWI active\n");
@@ -104,6 +105,13 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 	if (pdev->vendor == PCI_VENDOR_ID_INTEL) {
 		xhci->quirks |= XHCI_LPM_SUPPORT;
 		xhci->quirks |= XHCI_INTEL_HOST;
+	}
+	if (pdev->vendor == PCI_VENDOR_ID_TEXAS) {
+		xhci->quirks |= XHCI_STREAM_ALIGN_64;
+		xhci->quirks |= XHCI_TUSB_RX_THRESHOLD;
+		xhci->quirks |= XHCI_TUSB_TRANS_TIMEOUT;
+		xhci->quirks |= XHCI_TUSB_SLOW_HALT;
+		xhci->quirks |= XHCI_RESET_ON_RESUME;
 	}
 	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
 			pdev->device == PCI_DEVICE_ID_INTEL_PANTHERPOINT_XHCI) {

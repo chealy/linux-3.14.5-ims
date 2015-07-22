@@ -905,7 +905,7 @@ struct xhci_interval_bw {
 	unsigned int		overhead[3];
 };
 
-#define	XHCI_MAX_INTERVAL	7
+#define	XHCI_MAX_INTERVAL	16
 
 struct xhci_interval_bw_table {
 	unsigned int		interval0_esit_payload;
@@ -1555,10 +1555,6 @@ struct xhci_hcd {
 #define XHCI_PLAT		(1 << 16)
 #define XHCI_SLOW_SUSPEND	(1 << 17)
 #define XHCI_SPURIOUS_WAKEUP	(1 << 18)
-#define XHCI_STREAM_ALIGN_64	(1 << 19)
-#define XHCI_TUSB_RX_THRESHOLD	(1 << 20)
-#define XHCI_TUSB_TRANS_TIMEOUT	(1 << 21)
-#define XHCI_TUSB_SLOW_HALT	(1 << 22)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */

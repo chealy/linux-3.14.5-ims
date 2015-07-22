@@ -2220,7 +2220,6 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	u64		val_64;
 	struct xhci_segment	*seg;
 	u32 page_size, temp;
-	size_t align;
 	int i;
 
 	INIT_LIST_HEAD(&xhci->cancel_cmd_list);
@@ -2290,16 +2289,12 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	/* Linear stream context arrays don't have any boundary restrictions,
 	 * and only need to be 16-byte aligned.
 	 */
-	if (xhci->quirks & XHCI_STREAM_ALIGN_64)
-		align = 64;
-	else
-		align = 16;
 	xhci->small_streams_pool =
 		dma_pool_create("xHCI 256 byte stream ctx arrays",
-			dev, SMALL_STREAM_ARRAY_SIZE, align, 0);
+			dev, SMALL_STREAM_ARRAY_SIZE, 16, 0);
 	xhci->medium_streams_pool =
 		dma_pool_create("xHCI 1KB stream ctx arrays",
-			dev, MEDIUM_STREAM_ARRAY_SIZE, align, 0);
+			dev, MEDIUM_STREAM_ARRAY_SIZE, 16, 0);
 	/* Any stream context array bigger than MEDIUM_STREAM_ARRAY_SIZE
 	 * will be allocated with dma_alloc_coherent()
 	 */

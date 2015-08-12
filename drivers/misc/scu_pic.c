@@ -351,6 +351,35 @@ static ssize_t show_reset_reason(struct device *dev,
 
 static DEVICE_ATTR(reset_reason, S_IRUGO, show_reset_reason, NULL);
 
+static int get_ac_loss_success(struct i2c_client *client)
+{
+	struct scu_pic_data * const data = i2c_get_clientdata(client);
+	int err;
+
+	/*
+	 * Get the ac loss event result from the PIC
+	 */
+	mutex_lock(&data->i2c_lock);
+	err = scu_pic_read_byte(client, I2C_GET_SCU_PIC_AC_LOSS_SUCCESS);
+	mutex_unlock(&data->i2c_lock);
+
+	return err;
+}
+
+
+static ssize_t show_ac_loss_success(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	int success = get_ac_loss_success(to_i2c_client(dev));
+
+	if (success < 0)
+		return success;
+
+	return sprintf(buf, "%d\n", success);
+}
+
+static DEVICE_ATTR(ac_loss_success, S_IRUGO, show_ac_loss_success, NULL);
+
 
 static struct scu_pic_data *scu_pic_update_device(struct device *dev)
 {
@@ -1486,6 +1515,7 @@ static struct attribute *scu_pic_attributes_v6[] = {
 	&sensor_dev_attr_temp5_label.dev_attr.attr,
 	&dev_attr_reset.attr,
 	&dev_attr_reset_reason.attr,
+	&dev_attr_ac_loss_success.attr,
 	&dev_attr_reset_pin_state.attr,
 	&dev_attr_thermal_override_state.attr,
 	&dev_attr_ps_sensor_log.attr,

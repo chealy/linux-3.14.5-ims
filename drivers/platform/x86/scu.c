@@ -1301,10 +1301,11 @@ static void populate_unit_info(struct memory_accessor *mem_accessor,
 
 	/* Check if we have an SCU2 with a Zii mainboard and update the struct if yes */
 	if (pdata->version == scu2 &&
-		!strncmp(data->eeprom.board_part_number,
+		strnstr(data->eeprom.board_part_number,
 			SCU_ZII_BOARD_PARTNUM,
-			strlen(SCU_ZII_BOARD_PARTNUM))) {
-			struct scu_platform_data *newSCU2pdata = &scu_platform_data[scu2];
+			strlen(SCU_ZII_BOARD_PARTNUM)) != NULL) {
+			struct scu_platform_data *newSCU2pdata = &scu_platform_data[scu3];
+		newSCU2pdata->board_type = "SCU2 x86";
 		newSCU2pdata->spi_board_info = NULL;
 		newSCU2pdata->num_spi_board_info = 0;
 		newSCU2pdata->board_part_number = SCU_ZII_BOARD_PARTNUM;

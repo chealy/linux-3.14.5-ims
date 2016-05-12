@@ -524,210 +524,10 @@ static ssize_t reg_data_store(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RW(reg_data);
 
-/* phy register access */
-
-static ssize_t phy_device_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-
-	return sprintf(buf, "%x\n", ps->phy_device);
-}
-
-static ssize_t phy_device_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	ps->phy_device = val;
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(phy_device);
-
-static ssize_t phy_page_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-
-	return sprintf(buf, "%x\n", ps->phy_page);
-}
-
-static ssize_t phy_page_store(struct device *dev, struct device_attribute *attr,
-			      const char *buf, size_t count)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	ps->phy_page = val;
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(phy_page);
-
-static ssize_t phy_addr_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-
-	return sprintf(buf, "%x\n", ps->phy_addr);
-}
-
-static ssize_t phy_addr_store(struct device *dev, struct device_attribute *attr,
-			      const char *buf, size_t count)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	/* Don't let user write into page register directly */
-	if (val == 0x16)
-		return -EINVAL;
-
-	ps->phy_addr = val;
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(phy_addr);
-
-static ssize_t phy_data_show(struct device *dev,
-			     struct device_attribute *attr, char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int val;
-
-	if (ps->phy_page || ps->phy_addr >= 0x10) {
-		val = mv88e6352_phy_page_read(ds, ps->phy_device, ps->phy_page,
-					      ps->phy_addr);
-	} else {
-		val = REG_READ(REG_PORT(ps->phy_device), ps->phy_addr);
-	}
-
-	return sprintf(buf, "%x\n", val);
-}
-
-static ssize_t phy_data_store(struct device *dev, struct device_attribute *attr,
-			      const char *buf, size_t count)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	if (ps->phy_page || ps->phy_addr >= 0x10) {
-		mv88e6352_phy_page_write(ds, ps->phy_device, ps->phy_page,
-					 ps->phy_addr, val);
-	} else {
-		REG_WRITE(REG_PORT(ps->phy_device), ps->phy_addr, val);
-	}
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(phy_data);
-
-static ssize_t reset_counters_store(struct device *dev,
-				    struct device_attribute *attr,
-				    const char *buf, size_t count)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int ret, i;
-
-	ret = mv88e6xxx_reset_stats(ds);
-	if (ret < 0)
-		return ret;
-
-	for (i = 0; i < DSA_MAX_PORTS; i++) {
-
-		ps->receive_errors[i] = 0;
-		ps->idle_errors[i] = 0;
-		ps->link_down_count[i] = 0;
-		ps->receive_errors[i] = 0;
-
-		REG_WRITE(REG_PORT(i), 0x10, 0x0000);
-		REG_WRITE(REG_PORT(i), 0x11, 0x0000);
-		REG_WRITE(REG_PORT(i), 0x12, 0x0000);
-		REG_WRITE(REG_PORT(i), 0x13, 0x0000);
-	}
-
-	return count;
-}
-
-static DEVICE_ATTR_WO(reset_counters);
-
-/* Switch type and revision */
-
-static ssize_t revision_show(struct device *dev, struct device_attribute *attr,
-			     char *buf)
-{
-	struct platform_device *pdev = to_platform_device(dev);
-	struct dsa_switch_tree *dst = platform_get_drvdata(pdev);
-	struct dsa_switch *ds = dst->ds[0];
-
-	return sprintf(buf, "%s\n", ds->name);
-}
-
-static DEVICE_ATTR_RO(revision);
-
 static struct attribute *mv88e6352_attributes[] = {
 	&dev_attr_reg_device.attr,
 	&dev_attr_reg_addr.attr,
 	&dev_attr_reg_data.attr,
-	&dev_attr_phy_device.attr,
-	&dev_attr_phy_page.attr,
-	&dev_attr_phy_addr.attr,
-	&dev_attr_phy_data.attr,
-	&dev_attr_reset_counters.attr,
-	&dev_attr_revision.attr,
 	NULL
 };
 
@@ -1036,8 +836,8 @@ error:
 static int mv88e6352_set_eeprom(struct dsa_switch *ds,
 				struct ethtool_eeprom *eeprom, u8 *data)
 {
-	int ret;
 	int offset;
+	int ret;
 	int len;
 
 	if (eeprom->magic != 0xc3ec4951)
@@ -1252,48 +1052,6 @@ static void mv88e6352_bridge_flush(struct dsa_switch *ds, int port)
 
 /* Attributes attached to slave network devices */
 
-static ssize_t idle_errors_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int port = dsa_slave_port(to_net_dev(dev));
-	int val;
-
-	if (port < 0 || port >= ARRAY_SIZE(ps->idle_errors)) {
-		dev_err(dev, "Bad port number %d\n", port);
-		return -EINVAL;
-	}
-
-	val = mv88e6352_phy_read(ds, port, 0x0a);
-	ps->idle_errors[port] += val & 0xff;
-
-	return sprintf(buf, "%d\n", ps->idle_errors[port]);
-}
-
-static DEVICE_ATTR_RO(idle_errors);
-
-static ssize_t receive_errors_show(struct device *dev,
-				   struct device_attribute *attr, char *buf)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int port = dsa_slave_port(to_net_dev(dev));
-	int val;
-
-	if (port < 0 || port >= ARRAY_SIZE(ps->receive_errors)) {
-		dev_err(dev, "Bad port number %d\n", port);
-		return -EINVAL;
-	}
-
-	val = mv88e6352_phy_read(ds, port, 0x15);
-	ps->receive_errors[port] += val;
-
-	return sprintf(buf, "%d\n", ps->receive_errors[port]);
-}
-
-static DEVICE_ATTR_RO(receive_errors);
-
 static int cable_length_read(struct dsa_switch *ds, int port)
 {
 	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
@@ -1360,85 +1118,9 @@ static ssize_t link_down_count_show(struct device *dev,
 
 static DEVICE_ATTR_RO(link_down_count);
 
-static ssize_t packet_generator_count_show(struct device *dev,
-					   struct device_attribute *attr,
-					   char *buf)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-
-	return sprintf(buf, "%x\n", ps->packet_generator_count);
-}
-
-static ssize_t packet_generator_count_store(struct device *dev,
-					    struct device_attribute *attr,
-					    const char *buf, size_t count)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	ps->packet_generator_count = clamp_val(val, 0, 255);
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(packet_generator_count);
-
-static ssize_t packet_generator_show(struct device *dev,
-				     struct device_attribute *attr, char *buf)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	int port = dsa_slave_port(to_net_dev(dev));
-	int ret;
-
-	ret = mv88e6352_phy_page_read(ds, port, 0x06, 0x10);
-	if (ret < 0)
-		return ret;
-
-	return sprintf(buf, "%x\n", ((ret & 0x08) >> 3));
-}
-
-static ssize_t packet_generator_store(struct device *dev,
-				      struct device_attribute *attr,
-				      const char *buf, size_t count)
-{
-	struct dsa_switch *ds = dsa_slave_switch(to_net_dev(dev));
-	struct mv88e6xxx_priv_state *ps = ds_to_priv(ds);
-	int port = dsa_slave_port(to_net_dev(dev));
-	int pcount = clamp_val(ps->packet_generator_count, 0, 255);
-	unsigned int val;
-	int ret;
-
-	ret = kstrtouint(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	if (val != 0 && val != 1)
-		return -EINVAL;
-
-	ret = mv88e6352_phy_page_write(ds, port, 0x06, 0x10,
-				       (pcount << 8) | (val << 3) | 0x06);
-	if (ret < 0)
-		return ret;
-
-	return count;
-}
-
-static DEVICE_ATTR_RW(packet_generator);
-
 static struct attribute *mv88e6352_port_attrs[] = {
-	&dev_attr_idle_errors.attr,
-	&dev_attr_receive_errors.attr,
 	&dev_attr_cable_length.attr,
 	&dev_attr_link_down_count.attr,
-	&dev_attr_packet_generator_count.attr,
-	&dev_attr_packet_generator.attr,
 	NULL
 };
 
